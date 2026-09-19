@@ -225,16 +225,25 @@ const DrawerRoot: Component<DrawerRootProps> = (props) => {
       if (_open) {
         setTransitionAwareOpen(true)
         afterPaint(() => {
-          batch(() => {
-            setTransitionState('opening')
+          // Guard: if open() went false before this paint callback fired,
+          // the closing path has already run. Applying the opening state
+          // now would overwrite transitionState('closing') with 'opening'
+          // and leave the drawer stuck open with no further close trigger.
+          if (!open()) return
+          // Activate the CSS transition before changing the transform target.
+          // Both must land in separate paint cycles or the browser sees no
+          // property change and transitionend never fires.
+          setTransitionState('opening')
+          afterPaint(() => {
+            if (!open()) return
             setActiveSnapPoint(localProps.defaultSnapPoint)
+            const transitionDuration = parseFloat(
+              drawerStyles()!.transitionDuration,
+            )
+            if (transitionDuration === 0) {
+              setTransitionState(null)
+            }
           })
-          const transitionDuration = parseFloat(
-            drawerStyles()!.transitionDuration,
-          )
-          if (transitionDuration === 0) {
-            setTransitionState(null)
-          }
         })
       } else {
         batch(() => {
@@ -242,6 +251,10 @@ const DrawerRoot: Component<DrawerRootProps> = (props) => {
           setActiveSnapPoint(0)
         })
         afterPaint(() => {
+          // Guard: if open() went true before this paint callback fired,
+          // the opening path has already run. Calling closeDrawer() now
+          // would tear down a drawer that should be open.
+          if (open()) return
           const transitionDuration = parseFloat(
             drawerStyles()!.transitionDuration,
           )
